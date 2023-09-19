@@ -1294,6 +1294,26 @@ internal class PluginInstallerWindow : Window, IDisposable
             ImGui.Separator();
         }
 
+        if (pm.BoomMode)
+        {
+            ImGuiHelpers.ScaledDummy(10);
+
+            ImGui.PushStyleColor(ImGuiCol.Text, ImGuiColors.DalamudOrange);
+            ImGui.PushFont(InterfaceManager.IconFont);
+            ImGuiHelpers.CenteredText(FontAwesomeIcon.ExclamationTriangle.ToIconString());
+            ImGui.PopFont();
+            ImGui.PopStyleColor();
+
+            var lines = "由于目前插件不稳定或者已安装插件版本可能过旧,现已自动禁用所有插件".Split('\n');
+            foreach (var line in lines)
+            {
+                ImGuiHelpers.CenteredText(line);
+            }
+
+            ImGuiHelpers.ScaledDummy(10);
+            ImGui.Separator();
+        }
+
         ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, ImGuiHelpers.ScaledVector2(1, 3));
 
         var groupInfo = this.categoryManager.GroupList[this.categoryManager.CurrentGroupIdx];

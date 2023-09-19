@@ -30,6 +30,7 @@ using Dalamud.Plugin.Internal.Types.Manifest;
 using Dalamud.Plugin.Ipc.Internal;
 using Dalamud.Utility;
 using Dalamud.Utility.Timing;
+using ImGuiNET;
 using Newtonsoft.Json;
 
 namespace Dalamud.Plugin.Internal;
@@ -69,7 +70,7 @@ internal partial class PluginManager : IDisposable, IServiceType
     private readonly object pluginListLock = new();
     private readonly DirectoryInfo pluginDirectory;
     private readonly BannedPlugin[]? bannedPlugins;
-    
+
     private readonly List<LocalPlugin> installedPluginsList = new();
     private readonly List<RemotePluginManifest> availablePluginsList = new();
     private readonly List<AvailablePluginUpdate> updatablePluginsList = new();
@@ -124,6 +125,23 @@ internal partial class PluginManager : IDisposable, IServiceType
 
         var bannedPluginsJson = File.ReadAllText(Path.Combine(this.startInfo.AssetDirectory!, "UIRes", "bannedplugin.json"));
         var cheatPluginsJson = File.ReadAllText(Path.Combine(this.startInfo.AssetDirectory!, "UIRes", "cheatplugin.json"));
+
+        this.BoomMode = false;
+        if (File.Exists(Path.Combine(this.startInfo.AssetDirectory!, "UIRes", ".disable_all")) ||
+            Version.Parse(this.configuration.LastVersion) < Version.Parse("7.11.0.0"))
+        {
+            this.BoomMode = true;
+            foreach (var profile in this.profileManager.Profiles)
+            {
+                foreach (var plugin in profile.Plugins.Where(x => x.IsEnabled))
+                {
+                    Task.Run(() => profile.AddOrUpdateAsync(plugin.InternalName, false));
+                    Log.Error($"BoomMode:disabled {plugin.InternalName}");
+                }
+            }
+        }
+
+        Log.Information($"BoomMode:{this.BoomMode}");
         var bannedPluginsTemp = JsonConvert.DeserializeObject<BannedPlugin[]>(bannedPluginsJson);
         var cheatPluginsTemp = JsonConvert.DeserializeObject<BannedPlugin[]>(cheatPluginsJson);
         if (bannedPluginsTemp == null || cheatPluginsTemp == null)
@@ -229,6 +247,8 @@ internal partial class PluginManager : IDisposable, IServiceType
     /// Gets or sets a value indicating whether banned plugins will be loaded.
     /// </summary>
     public bool LoadBannedPlugins { get; set; }
+
+    public bool BoomMode { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether the given repo manifest should be visible to the user.
