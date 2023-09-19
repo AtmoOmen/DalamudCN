@@ -77,6 +77,8 @@ internal partial class PluginManager : IDisposable, IServiceType
 
     private readonly DalamudLinkPayload openInstallerWindowPluginChangelogsLink;
 
+    private readonly string boomModeEnabledPluginsFile;
+
     [ServiceManager.ServiceDependency]
     private readonly DalamudConfiguration configuration = Service<DalamudConfiguration>.Get();
 
@@ -131,17 +133,29 @@ internal partial class PluginManager : IDisposable, IServiceType
             Version.Parse(this.configuration.LastVersion) < Version.Parse("7.11.0.0"))
         {
             this.BoomMode = true;
+            this.boomModeEnabledPluginsFile = Path.Combine(Path.GetDirectoryName(this.startInfo.ConfigurationPath) ?? string.Empty, "pluginConfigs", "boommodeplugins.txt");
+            var enabledPlugins = new List<string>();
+            if (File.Exists(this.boomModeEnabledPluginsFile))
+                enabledPlugins.AddRange(File.ReadAllLines(this.boomModeEnabledPluginsFile));
             foreach (var profile in this.profileManager.Profiles)
             {
                 foreach (var plugin in profile.Plugins.Where(x => x.IsEnabled))
                 {
-                    Task.Run(() => profile.AddOrUpdateAsync(plugin.InternalName, false));
-                    Log.Error($"BoomMode:disabled {plugin.InternalName}");
+                    if (!enabledPlugins.Contains(plugin.InternalName))
+                    {
+                        Task.Run(() => profile.AddOrUpdateAsync(plugin.InternalName, false));
+                        Log.Error($"BoomMode:disabled {plugin.InternalName}");
+                    }
                 }
             }
         }
 
-        Log.Information($"BoomMode:{this.BoomMode}");
+        if (!this.BoomMode)
+        { 
+            if (File.Exists(this.boomModeEnabledPluginsFile))
+                File.Delete(this.boomModeEnabledPluginsFile);
+        }
+
         var bannedPluginsTemp = JsonConvert.DeserializeObject<BannedPlugin[]>(bannedPluginsJson);
         var cheatPluginsTemp = JsonConvert.DeserializeObject<BannedPlugin[]>(cheatPluginsJson);
         if (bannedPluginsTemp == null || cheatPluginsTemp == null)
@@ -370,6 +384,25 @@ internal partial class PluginManager : IDisposable, IServiceType
     /// <inheritdoc/>
     public void Dispose()
     {
+        if (this.BoomMode)
+        {
+            try
+            {
+                var enabledPlugins = this.installedPluginsList.Where(plugin => plugin.State is PluginState.Loaded).Select(plugin => plugin.InternalName);
+                Log.Debug(this.boomModeEnabledPluginsFile);
+                foreach (var item in enabledPlugins)
+                {
+                    Log.Debug(item);
+                }
+
+                File.WriteAllLines(this.boomModeEnabledPluginsFile, enabledPlugins);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, $"Error saving plugin state");
+            }
+        }
+
         var disposablePlugins =
             this.installedPluginsList.Where(plugin => plugin.State is PluginState.Loaded or PluginState.LoadError).ToArray();
         if (disposablePlugins.Any())
