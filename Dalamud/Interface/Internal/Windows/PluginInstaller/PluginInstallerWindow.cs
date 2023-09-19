@@ -1304,7 +1304,7 @@ internal class PluginInstallerWindow : Window, IDisposable
             ImGui.PopFont();
             ImGui.PopStyleColor();
 
-            var lines = "由于目前插件不稳定或者已安装插件版本可能过旧,现已自动禁用所有插件".Split('\n');
+            var lines = "由于目前插件不稳定或者已安装插件版本可能过旧,现已自动禁用所有插件\n请自行升级或启用".Split('\n');
             foreach (var line in lines)
             {
                 ImGuiHelpers.CenteredText(line);
