@@ -467,7 +467,7 @@ internal unsafe class UiDebug
 
             for (var j = 0; j < unitManager->Count && headerOpen; j++)
             {
-                var unitBase = *(AtkUnitBase**)Unsafe.AsPointer(ref unitManager->EntriesSpan[j]);
+                var unitBase = *(AtkUnitBase**)Unsafe.AsPointer(ref unitManager->Entries[j]);
                 if (this.selectedUnitBase != null && unitBase == this.selectedUnitBase)
                 {
                     this.selectedInList[i] = true;
@@ -512,7 +512,7 @@ internal unsafe class UiDebug
             {
                 for (var j = 0; j < unitManager->Count; j++)
                 {
-                    var unitBase = *(AtkUnitBase**)Unsafe.AsPointer(ref unitManager->EntriesSpan[j]);
+                    var unitBase = *(AtkUnitBase**)Unsafe.AsPointer(ref unitManager->Entries[j]);
                     if (this.selectedUnitBase == null || unitBase != this.selectedUnitBase) continue;
                     this.selectedInList[i] = true;
                     foundSelected = true;

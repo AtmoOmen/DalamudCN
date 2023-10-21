@@ -122,8 +122,8 @@ internal partial class PluginManager : IDisposable, IServiceType
 
         this.PluginConfigs = new PluginConfigurations(Path.Combine(Path.GetDirectoryName(this.dalamud.StartInfo.ConfigurationPath) ?? string.Empty, "pluginConfigs"));
 
-        var bannedPluginsJson = File.ReadAllText(Path.Combine(this.startInfo.AssetDirectory!, "UIRes", "bannedplugin.json"));
-        var cheatPluginsJson = File.ReadAllText(Path.Combine(this.startInfo.AssetDirectory!, "UIRes", "cheatplugin.json"));
+        var bannedPluginsJson = File.ReadAllText(Path.Combine(this.dalamud.StartInfo.AssetDirectory!, "UIRes", "bannedplugin.json"));
+        var cheatPluginsJson = File.ReadAllText(Path.Combine(this.dalamud.StartInfo.AssetDirectory!, "UIRes", "cheatplugin.json"));
         var bannedPluginsTemp = JsonConvert.DeserializeObject<BannedPlugin[]>(bannedPluginsJson);
         var cheatPluginsTemp = JsonConvert.DeserializeObject<BannedPlugin[]>(cheatPluginsJson);
         if (bannedPluginsTemp == null || cheatPluginsTemp == null)
@@ -776,7 +776,7 @@ internal partial class PluginManager : IDisposable, IServiceType
         var version = useTesting ? repoManifest.TestingAssemblyVersion : repoManifest.AssemblyVersion;
 
         // var response = await this.happyHttpClient.SharedHttpClient.GetAsync(downloadUrl);
-        var response = await Util.HttpClient.GetAsync(downloadUrl);
+        var response = await Service<HappyHttpClient>.Get().SharedHttpClient.GetAsync(downloadUrl);
         response.EnsureSuccessStatusCode();
 
         var outputDir = new DirectoryInfo(Path.Combine(this.pluginDirectory.FullName, repoManifest.InternalName, version?.ToString() ?? string.Empty));

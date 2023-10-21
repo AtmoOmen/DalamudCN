@@ -181,9 +181,6 @@ internal class DalamudInterface : IDisposable, IServiceType
         this.pluginWindow.Dispose();
         this.titleScreenMenuWindow.Dispose();
         this.tosWindow.Dispose();
-
-        this.logoTexture.Dispose();
-        this.tsmLogoTexture.Dispose();
     }
 
     #region Open

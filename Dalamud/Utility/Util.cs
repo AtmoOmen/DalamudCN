@@ -22,6 +22,7 @@ using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility;
 using Dalamud.Logging.Internal;
 using Dalamud.Memory;
+using Dalamud.Networking.Http;
 using ImGuiNET;
 using Lumina.Excel.GeneratedSheets;
 using PInvoke;
