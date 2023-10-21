@@ -1,30 +1,23 @@
-using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Reflection;
 using System.Threading;
 
-using Dalamud.Interface.Internal;
 using Dalamud.IoC;
 using Dalamud.IoC.Internal;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 using Dalamud.Utility.Timing;
-using ImGuiScene;
 using JetBrains.Annotations;
 using Lumina;
 using Lumina.Data;
-using Lumina.Data.Files;
-using Lumina.Data.Parsing.Tex.Buffers;
 using Lumina.Excel;
 using Lumina.Excel.GeneratedSheets;
 using Lumina.Text;
 using Newtonsoft.Json;
 using Serilog;
-using SharpDX.DXGI;
 
 namespace Dalamud.Data;
 
@@ -37,18 +30,15 @@ namespace Dalamud.Data;
 #pragma warning disable SA1015
 [ResolveVia<IDataManager>]
 #pragma warning restore SA1015
-public sealed class DataManager : IDisposable, IServiceType, IDataManager
+internal sealed class DataManager : IDisposable, IServiceType, IDataManager
 {
-    private const string IconFileFormat = "ui/icon/{0:D3}000/{1}{2:D6}.tex";
-    private const string HighResolutionIconFileFormat = "ui/icon/{0:D3}000/{1}{2:D6}_hr1.tex";
-
     private readonly Thread luminaResourceThread;
     private readonly CancellationTokenSource luminaCancellationTokenSource;
 
     [ServiceManager.ServiceConstructor]
-    private DataManager(DalamudStartInfo dalamudStartInfo, Dalamud dalamud)
+    private DataManager(Dalamud dalamud)
     {
-        this.Language = dalamudStartInfo.Language;
+        this.Language = (ClientLanguage)dalamud.StartInfo.Language;
 
         // Set up default values so plugins do not null-reference when data is being loaded.
         this.ClientOpCodes = this.ServerOpCodes = new ReadOnlyDictionary<string, ushort>(new Dictionary<string, ushort>());
@@ -96,17 +86,20 @@ public sealed class DataManager : IDisposable, IServiceType, IDataManager
 
                 Log.Information("Lumina is ready: {0}", this.GameData.DataPath);
 
-                try
+                if (!dalamud.StartInfo.TroubleshootingPackData.IsNullOrEmpty())
                 {
-                    var tsInfo =
-                        JsonConvert.DeserializeObject<LauncherTroubleshootingInfo>(
-                            dalamudStartInfo.TroubleshootingPackData);
-                    this.HasModifiedGameDataFiles =
-                        tsInfo?.IndexIntegrity is LauncherTroubleshootingInfo.IndexIntegrityResult.Failed or LauncherTroubleshootingInfo.IndexIntegrityResult.Exception;
-                }
-                catch
-                {
-                    // ignored
+                    try
+                    {
+                        var tsInfo =
+                            JsonConvert.DeserializeObject<LauncherTroubleshootingInfo>(
+                                dalamud.StartInfo.TroubleshootingPackData);
+                        this.HasModifiedGameDataFiles =
+                            tsInfo?.IndexIntegrity is LauncherTroubleshootingInfo.IndexIntegrityResult.Failed or LauncherTroubleshootingInfo.IndexIntegrityResult.Exception;
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
                 }
             }
 
@@ -232,10 +225,14 @@ public sealed class DataManager : IDisposable, IServiceType, IDataManager
     /// <inheritdoc/>
     public ClientLanguage Language { get; private set; }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Gets a list of server opcodes.
+    /// </summary>
     public ReadOnlyDictionary<string, ushort> ServerOpCodes { get; private set; }
-
-    /// <inheritdoc/>
+    
+    /// <summary>
+    /// Gets a list of client opcodes.
+    /// </summary>
     [UsedImplicitly]
     public ReadOnlyDictionary<string, ushort> ClientOpCodes { get; private set; }
 
@@ -246,10 +243,12 @@ public sealed class DataManager : IDisposable, IServiceType, IDataManager
     public ExcelModule Excel => this.GameData.Excel;
 
     /// <inheritdoc/>
-    public bool IsDataReady { get; private set; }
-
-    /// <inheritdoc/>
     public bool HasModifiedGameDataFiles { get; private set; }
+
+    /// <summary>
+    /// Gets a value indicating whether Game Data is ready to be read.
+    /// </summary>
+    internal bool IsDataReady { get; private set; }
 
     #region Lumina Wrappers
 
