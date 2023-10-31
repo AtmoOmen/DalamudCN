@@ -12,7 +12,6 @@ using Dalamud.Configuration.Internal;
 using Dalamud.Game;
 using Dalamud.Game.ClientState.GamePad;
 using Dalamud.Game.ClientState.Keys;
-using Dalamud.Game.Gui.Internal;
 using Dalamud.Game.Internal.DXGI;
 using Dalamud.Hooking;
 using Dalamud.Interface.GameFonts;
@@ -52,8 +51,16 @@ namespace Dalamud.Interface.Internal;
 [ServiceManager.BlockingEarlyLoadedService]
 internal class InterfaceManager : IDisposable, IServiceType
 {
-    private const float DefaultFontSizePt = 12.0f;
-    private const float DefaultFontSizePx = DefaultFontSizePt * 4.0f / 3.0f;
+    /// <summary>
+    /// The default font size, in points.
+    /// </summary>
+    public const float DefaultFontSizePt = 12.0f;
+
+    /// <summary>
+    /// The default font size, in pixels.
+    /// </summary>
+    public const float DefaultFontSizePx = (DefaultFontSizePt * 4.0f) / 3.0f;
+
     private const ushort Fallback1Codepoint = 0x3013; // Geta mark; FFXIV uses this to indicate that a glyph is missing.
     private const ushort Fallback2Codepoint = '-';    // FFXIV uses dash if Geta mark is unavailable.
 
@@ -64,12 +71,16 @@ internal class InterfaceManager : IDisposable, IServiceType
 
     [ServiceManager.ServiceDependency]
     private readonly Framework framework = Service<Framework>.Get();
+    
+    [ServiceManager.ServiceDependency]
+    private readonly WndProcHookManager wndProcHookManager = Service<WndProcHookManager>.Get();
+    
+    [ServiceManager.ServiceDependency]
+    private readonly DalamudIme dalamudIme = Service<DalamudIme>.Get();
 
     private readonly ManualResetEvent fontBuildSignal;
     private readonly SwapChainVtableResolver address;
-    private readonly Hook<DispatchMessageWDelegate> dispatchMessageWHook;
     private readonly Hook<SetCursorDelegate> setCursorHook;
-    private Hook<ProcessMessageDelegate> processMessageHook;
     private RawDX11Scene? scene;
 
     private Hook<PresentDelegate>? presentHook;
@@ -83,8 +94,6 @@ internal class InterfaceManager : IDisposable, IServiceType
     [ServiceManager.ServiceConstructor]
     private InterfaceManager()
     {
-        this.dispatchMessageWHook = Hook<DispatchMessageWDelegate>.FromImport(
-            null, "user32.dll", "DispatchMessageW", 0, this.DispatchMessageWDetour);
         this.setCursorHook = Hook<SetCursorDelegate>.FromImport(
             null, "user32.dll", "SetCursor", 0, this.SetCursorDetour);
 
@@ -101,12 +110,6 @@ internal class InterfaceManager : IDisposable, IServiceType
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate IntPtr SetCursorDelegate(IntPtr hCursor);
-
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    private delegate IntPtr DispatchMessageWDelegate(ref User32.MSG msg);
-
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate IntPtr ProcessMessageDelegate(IntPtr hWnd, uint msg, ulong wParam, ulong lParam, IntPtr handeled);
 
     /// <summary>
     /// This event gets called each frame to facilitate ImGui drawing.
@@ -227,10 +230,10 @@ internal class InterfaceManager : IDisposable, IServiceType
             this.setCursorHook.Dispose();
             this.presentHook?.Dispose();
             this.resizeBuffersHook?.Dispose();
-            this.dispatchMessageWHook.Dispose();
-            this.processMessageHook?.Dispose();
         }).Wait();
 
+        this.wndProcHookManager.PreWndProc -= this.WndProcHookManagerOnPreWndProc;
+        ImGuiClipboardConfig.Unapply();
         this.scene?.Dispose();
     }
 
@@ -619,6 +622,7 @@ internal class InterfaceManager : IDisposable, IServiceType
             ImGui.GetIO().FontGlobalScale = configuration.GlobalUiScale;
 
             this.SetupFonts();
+            ImGuiClipboardConfig.Apply();
 
             if (!configuration.IsDocking)
             {
@@ -651,6 +655,20 @@ internal class InterfaceManager : IDisposable, IServiceType
 
         this.scene = newScene;
         Service<InterfaceManagerWithScene>.Provide(new(this));
+
+        this.wndProcHookManager.PreWndProc += this.WndProcHookManagerOnPreWndProc;
+    }
+
+    private unsafe void WndProcHookManagerOnPreWndProc(ref WndProcHookManager.WndProcOverrideEventArgs args)
+    {
+        var r = this.scene?.ProcessWndProcW(args.Hwnd, (User32.WindowMessage)args.Message, args.WParam, args.LParam);
+        if (r is not null)
+        {
+            args.ReturnValue = r.Value;
+            args.SuppressCall = true;
+        }
+
+        this.dalamudIme.ProcessImeMessage(ref args);
     }
 
     /*
@@ -1089,15 +1107,9 @@ internal class InterfaceManager : IDisposable, IServiceType
             Log.Verbose($"Present address 0x{this.presentHook!.Address.ToInt64():X}");
             Log.Verbose($"ResizeBuffers address 0x{this.resizeBuffersHook!.Address.ToInt64():X}");
 
-            var wndProcAddress = sigScanner.ScanText("E8 ?? ?? ?? ?? 80 7C 24 ?? ?? 74 ?? B8");
-            Log.Verbose($"WndProc address 0x{wndProcAddress.ToInt64():X}");
-            this.processMessageHook = Hook<ProcessMessageDelegate>.FromAddress(wndProcAddress, this.ProcessMessageDetour);
-
             this.setCursorHook.Enable();
             this.presentHook.Enable();
             this.resizeBuffersHook.Enable();
-            this.dispatchMessageWHook.Enable();
-            this.processMessageHook.Enable();
         });
     }
 
@@ -1116,25 +1128,6 @@ internal class InterfaceManager : IDisposable, IServiceType
         Log.Verbose("[FONT] Font Rebuild OK!");
 
         this.isRebuildingFonts = false;
-    }
-
-    private unsafe IntPtr ProcessMessageDetour(IntPtr hWnd, uint msg, ulong wParam, ulong lParam, IntPtr handeled)
-    {
-        var ime = Service<DalamudIME>.GetNullable();
-        var res = ime?.ProcessWndProcW(hWnd, (User32.WindowMessage)msg, (void*)wParam, (void*)lParam);
-        return this.processMessageHook.Original(hWnd, msg, wParam, lParam, handeled);
-    }
-
-    private unsafe IntPtr DispatchMessageWDetour(ref User32.MSG msg)
-    {
-        if (msg.hwnd == this.GameWindowHandle && this.scene != null)
-        {
-            var res = this.scene.ProcessWndProcW(msg.hwnd, msg.message, (void*)msg.wParam, (void*)msg.lParam);
-            if (res != null)
-                return res.Value;
-        }
-
-        return this.dispatchMessageWHook.IsDisposed ? User32.DispatchMessage(ref msg) : this.dispatchMessageWHook.Original(ref msg);
     }
 
     private IntPtr ResizeBuffersDetour(IntPtr swapChain, uint bufferCount, uint width, uint height, uint newFormat, uint swapChainFlags)
