@@ -52,7 +52,7 @@ jobs:
     - uses: actions/checkout@v2
       with:
         repository: ottercorp/dalamud-distrib
-        ref: v9
+        ref: main
         ssh-key: ${{ secrets.DEPLOY_SSH }}
     - uses: actions/download-artifact@v2
       with:
@@ -82,7 +82,7 @@ jobs:
         
         $branchName = $env:GH_BRANCH
         
-        $branchName = "stg"
+        $branchName = "canary"
         
         $newVersion = [System.IO.File]::ReadAllText("$(Get-Location)\scratch\TEMP_gitver.txt")
         $revision = [System.IO.File]::ReadAllText("$(Get-Location)\scratch\revision.txt")
@@ -126,7 +126,7 @@ jobs:
         git add .
         git commit -m "[CI] Update staging for ${DVER} on ${GH_BRANCH}" || true
         
-        git push origin v9 || true
+        git push origin main || true
 
     - name: Clear Web Services cache
       run: curl -X POST --fail https://aonyx.ffxiv.wang/Dalamud/Release/ClearCache?key=${{ secrets.CACHE_CLEAR_KEY }}
